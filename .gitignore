@@ -1,0 +1,4 @@
+.env
+notifikasi.log
+__pycache__/
+.venv/

@@ -1,0 +1,5 @@
+{
+  "beg coach": {"nama": "Beg Coach", "stok": 5, "stok_minimum": 2},
+  "jam casio": {"nama": "Jam Casio", "stok": 8, "stok_minimum": 3},
+  "dompet guess": {"nama": "Dompet Guess", "stok": 12, "stok_minimum": 4}
+}
