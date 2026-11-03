@@ -72,7 +72,7 @@ TOOLS = [
     },
     {
         "name": "maklum_bos",
-        "description": "Hantar mesej bebas kepada bos (selain notifikasi pengurangan stok automatik).",
+        "description": "Hantar mesej bebas kepada bos melalui Telegram (selain notifikasi pengurangan stok automatik).",
         "input_schema": {
             "type": "object",
             "properties": {"subjek": {"type": "string"}, "mesej": {"type": "string"}},
@@ -117,6 +117,8 @@ def jalankan_tool(nama, inp):
         return json.dumps(hasil, ensure_ascii=False), False
     except inventori.RalatInventori as e:
         return str(e), True
+    except Exception as e:  # cth. masalah sambungan Google Sheets
+        return f"Ralat sistem ({type(e).__name__}): {e}. Beritahu staf untuk cuba lagi.", True
 
 
 def jawab(client, messages):
