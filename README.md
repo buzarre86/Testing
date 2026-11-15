@@ -4,6 +4,11 @@ AI agent (guna Claude) untuk urus inventori kedai yang disimpan dalam **Google S
 Staf taip arahan dalam bahasa biasa, agent kemas kini sheet, dan **setiap kali stok
 berkurang, bos dimaklumkan secara automatik melalui Telegram**.
 
+> 💡 **Cuma nak bos dapat notifikasi bila stok berkurang dalam Google Sheet?**
+> Guna [**Pemerhati Stok (Apps Script)**](apps-script/README.md). Ia dipasang terus dalam
+> Google Sheet, percuma, tak perlu komputer sentiasa hidup, dan turut kesan perubahan
+> yang dibuat dengan tangan.
+
 ## Contoh penggunaan
 
 ```
