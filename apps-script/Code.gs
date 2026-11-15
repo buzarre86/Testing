@@ -3,7 +3,7 @@
  *
  * Skrip ini berjalan di dalam Google Sheet. Setiap kali nilai lajur "Stok"
  * TURUN (sama ada staf ubah dengan tangan, atau program lain ubah melalui API),
- * bos akan terima mesej Telegram.
+ * bos akan terima mesej Telegram. (Lajur stok boleh bernama "Baki" atau "Stok".)
  *
  * - Perubahan dengan tangan  → dikesan serta-merta (trigger onEdit)
  * - Perubahan oleh program   → dikesan dalam masa ~5 minit (trigger berjadual)
@@ -15,9 +15,12 @@
 var NAMA_TAB = '';          // Nama tab stok. Kosongkan untuk guna tab pertama.
 var SEMAK_SETIAP_MINIT = 5; // Mesti 1, 5, 10, 15 atau 30.
 
-var LAJUR_NAMA = 'nama';
-var LAJUR_STOK = 'stok';
-var LAJUR_MIN = 'stok minimum';
+// Nama tajuk lajur yang diterima (huruf besar/kecil tak penting). Yang pertama dijumpai digunakan.
+var LAJUR_KOD = ['kod', 'sku', 'kod produk'];           // pilihan, tapi disyorkan (pengenalan unik)
+var LAJUR_NAMA = ['nama', 'nama produk', 'produk'];     // wajib
+var LAJUR_STOK = ['baki', 'stok', 'kuantiti', 'qty'];   // wajib
+var LAJUR_BRAND = ['brand', 'jenama'];                  // pilihan, dipaparkan dalam mesej
+var LAJUR_MIN = ['stok minimum', 'minimum', 'min'];     // pilihan, untuk amaran STOK RENDAH
 var AWALAN_SNAPSHOT = 'stok:';
 // ===================================================
 
@@ -104,13 +107,19 @@ function hidupkanPemerhati() {
     ui.alert('Sila lengkapkan langkah 1 dan 2 dahulu.');
     return;
   }
+  var items;
+  try {
+    items = bacaStok_();
+  } catch (err) {
+    ui.alert('❌ ' + err.message);
+    return;
+  }
   padamTrigger_();
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   ScriptApp.newTrigger('bilaDiubah').forSpreadsheet(ss).onEdit().create();
   ScriptApp.newTrigger('semakBerjadual').timeBased().everyMinutes(SEMAK_SETIAP_MINIT).create();
 
   // Rekod stok semasa sebagai titik permulaan (tiada notifikasi untuk nilai sedia ada).
-  var items = bacaStok_();
   simpanSnapshot_(items, true);
   ui.alert('✅ Pemerhati stok sudah HIDUP.\n\n' + items.length + ' produk sedang diperhati. ' +
     'Bos akan dimaklumkan setiap kali stok berkurang.');
@@ -182,7 +191,7 @@ function nombor_(v) {
 /**
  * Bandingkan snapshot lama dengan stok semasa.
  * @param {Object} sebelum   {kunci: stok}
- * @param {Array}  items     [{nama, stok, min}]  (stok null = sel kosong/tidak sah)
+ * @param {Array}  items     [{kunci, nama, stok, min}]  (stok null = sel kosong/tidak sah)
  * @param {Object} namaLama  {kunci: nama asal}  (pilihan, untuk produk dipadam)
  * @return {Array} senarai pengurangan
  */
@@ -191,7 +200,7 @@ function kiraPengurangan(sebelum, items, namaLama) {
   var hasil = [];
   var ada = {};
   items.forEach(function (it) {
-    var k = kunci_(it.nama);
+    var k = it.kunci;
     ada[k] = true;
     if (it.stok === null || !(k in sebelum)) return; // produk baru atau sel kosong: abaikan
     if (it.stok < sebelum[k]) {
@@ -235,22 +244,42 @@ function dapatkanTab_() {
   return tab;
 }
 
+function cariLajur_(tajuk, pilihan) {
+  for (var i = 0; i < pilihan.length; i++) {
+    var c = tajuk.indexOf(pilihan[i]);
+    if (c >= 0) return c;
+  }
+  return -1;
+}
+
 function bacaStok_() {
   var nilai = dapatkanTab_().getDataRange().getValues();
   if (nilai.length === 0) return [];
   var tajuk = nilai[0].map(kunci_);
-  var cN = tajuk.indexOf(LAJUR_NAMA), cS = tajuk.indexOf(LAJUR_STOK), cM = tajuk.indexOf(LAJUR_MIN);
+  var cK = cariLajur_(tajuk, LAJUR_KOD), cN = cariLajur_(tajuk, LAJUR_NAMA),
+      cS = cariLajur_(tajuk, LAJUR_STOK), cB = cariLajur_(tajuk, LAJUR_BRAND),
+      cM = cariLajur_(tajuk, LAJUR_MIN);
   if (cN < 0 || cS < 0) {
-    throw new Error('Baris pertama mesti ada lajur "Nama" dan "Stok". Tajuk sekarang: ' + nilai[0].join(', '));
+    throw new Error('Baris pertama mesti ada lajur nama produk (' + LAJUR_NAMA.join('/') +
+      ') dan stok (' + LAJUR_STOK.join('/') + '). Tajuk sekarang: ' + nilai[0].join(', '));
   }
-  var items = [];
+  var items = [], dilihat = {};
   for (var r = 1; r < nilai.length; r++) {
-    var nama = String(nilai[r][cN]).trim();
-    if (!nama) continue;
+    var row = nilai[r];
+    var nama = String(row[cN]).trim();
+    var kod = cK >= 0 ? String(row[cK]).trim() : '';
+    if (!nama && !kod) continue;
+    var brand = cB >= 0 ? String(row[cB]).trim() : '';
+    var label = (brand && nama.toLowerCase().indexOf(brand.toLowerCase()) < 0 ? brand + ' ' : '') + nama;
+    if (kod) label += ' [' + kod + ']';
+    var k = kunci_(kod || nama);
+    dilihat[k] = (dilihat[k] || 0) + 1;
+    if (dilihat[k] > 1) k += '#' + dilihat[k]; // kod/nama berulang
     items.push({
-      nama: nama,
-      stok: nombor_(nilai[r][cS]),
-      min: cM >= 0 ? (nombor_(nilai[r][cM]) || 0) : 0
+      kunci: k,
+      nama: label,
+      stok: nombor_(row[cS]),
+      min: cM >= 0 ? (nombor_(row[cM]) || 0) : 0
     });
   }
   return items;
@@ -274,7 +303,7 @@ function simpanSnapshot_(items, mulaSemula) {
   var lama = muatSnapshot_().stok;
   var baru = {};
   items.forEach(function (it) {
-    var k = kunci_(it.nama);
+    var k = it.kunci;
     var stok = it.stok !== null ? it.stok : (!mulaSemula && k in lama ? lama[k] : null); // sel kosong: kekalkan nilai lama
     if (stok !== null) baru[AWALAN_SNAPSHOT + k] = stok + '|' + it.nama;
   });

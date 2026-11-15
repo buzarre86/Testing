@@ -1,7 +1,7 @@
 # 📦 Pemerhati Stok → Telegram bos (Google Apps Script)
 
-Skrip ini dipasang **di dalam Google Sheet stok anda**. Setiap kali nilai lajur **Stok**
-turun, bos terus dapat mesej Telegram. Percuma, dan tak perlu komputer sentiasa hidup.
+Skrip ini dipasang **di dalam Google Sheet stok anda**. Setiap kali nilai lajur stok
+(**Baki** / **Stok**) turun, bos terus dapat mesej Telegram. Percuma, dan tak perlu komputer sentiasa hidup.
 
 | Siapa ubah stok | Bila bos dapat mesej |
 |---|---|
@@ -30,13 +30,22 @@ dari sheet, bos juga dimaklumkan.
 
 ### 1. Pastikan format sheet betul
 
-Baris pertama tab stok mesti ada tajuk ini (huruf besar/kecil tak penting):
+Skrip baca tajuk di baris pertama tab stok (huruf besar/kecil tak penting):
 
-| Nama | Stok | Stok Minimum |
+| Lajur | Nama tajuk yang diterima | Wajib? |
 |---|---|---|
-| Beg Coach | 5 | 2 |
+| Kod produk | `kod`, `sku`, `kod produk` | Disyorkan (pengenalan unik) |
+| Nama produk | `nama`, `nama produk`, `produk` | ✅ |
+| Jumlah stok | `baki`, `stok`, `kuantiti`, `qty` | ✅ |
+| Brand | `brand`, `jenama` | Pilihan (dipaparkan dalam mesej) |
+| Paras amaran | `stok minimum`, `minimum`, `min` | Pilihan (untuk ⚠️ STOK RENDAH) |
 
-`Stok Minimum` adalah pilihan. Ia digunakan untuk amaran ⚠️ STOK RENDAH.
+Lajur lain (harga, status, tarikh dan sebagainya) diabaikan. Contoh sheet yang serasi:
+
+| kod | nama | brand | jenis | harga | baki | status |
+|---|---|---|---|---|---|---|
+| GS001 | Tabby Shoulder Bag 26 | Coach | Beg | 1599 | 3 | Ada |
+
 Skrip guna **tab pertama**. Kalau stok di tab lain, tukar `NAMA_TAB` di bahagian atas `Code.gs`.
 
 ### 2. Cipta bot Telegram
