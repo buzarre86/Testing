@@ -29,26 +29,6 @@ Sila restock segera.
 Stok naik (restock) dan produk baru **tidak** dihantar notifikasi. Perubahan huruf besar/kecil
 sahaja pada status (cth. `terjual → Terjual`) juga diabaikan.
 
----|---|
-| Staf ubah sheet dengan tangan | Serta-merta (beberapa saat) |
-| Program lain / API (cth. `agent.py`) | Dalam masa ~5 minit |
-
-Contoh mesej yang bos terima:
-
-```
-📦 Stok Kedai
-Diubah oleh: staf@kedai.com
-
-⚠️ STOK RENDAH: Beg Coach
-Kurang : 3 unit
-Stok   : 5 → 2 unit
-Minimum: 2 unit
-Pertimbangkan restock.
-```
-
-Stok naik (restock) dan produk baru **tidak** dihantar notifikasi. Kalau produk dipadam
-dari sheet, bos juga dimaklumkan.
-
 ---
 
 ## Langkah pemasangan (±10 minit)
