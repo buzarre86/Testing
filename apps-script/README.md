@@ -1,10 +1,35 @@
 # 📦 Pemerhati Stok → Telegram bos (Google Apps Script)
 
-Skrip ini dipasang **di dalam Google Sheet stok anda**. Setiap kali nilai lajur stok
-(**Baki** / **Stok**) turun, bos terus dapat mesej Telegram. Percuma, dan tak perlu komputer sentiasa hidup.
+Skrip ini dipasang **di dalam Google Sheet stok anda**. Bos terus dapat mesej Telegram bila:
+
+- nilai lajur stok (**Baki** / **Stok**) **turun**,
+- nilai lajur **Status** **bertukar** (cth. `Ada → Terjual`), atau
+- produk **dipadam** dari sheet.
+
+Percuma, dan tak perlu komputer sentiasa hidup.
 
 | Siapa ubah stok | Bila bos dapat mesej |
 |---|---|
+| Staf ubah sheet dengan tangan | Serta-merta (beberapa saat) |
+| Program lain / API (cth. `agent.py`) | Dalam masa ~5 minit |
+
+Contoh mesej yang bos terima:
+
+```
+📦 Galoshire Stok
+Diubah oleh: staf@kedai.com
+
+❗ HABIS: Coach Willow Tote [GS002]
+Kurang : 1 unit
+Baki   : 1 → 0 unit
+Status : Ada → Habis
+Sila restock segera.
+```
+
+Stok naik (restock) dan produk baru **tidak** dihantar notifikasi. Perubahan huruf besar/kecil
+sahaja pada status (cth. `terjual → Terjual`) juga diabaikan.
+
+---|---|
 | Staf ubah sheet dengan tangan | Serta-merta (beberapa saat) |
 | Program lain / API (cth. `agent.py`) | Dalam masa ~5 minit |
 
@@ -38,9 +63,9 @@ Skrip baca tajuk di baris pertama tab stok (huruf besar/kecil tak penting):
 | Nama produk | `nama`, `nama produk`, `produk` | ✅ |
 | Jumlah stok | `baki`, `stok`, `kuantiti`, `qty` | ✅ |
 | Brand | `brand`, `jenama` | Pilihan (dipaparkan dalam mesej) |
-| Paras amaran | `stok minimum`, `minimum`, `min` | Pilihan (untuk ⚠️ STOK RENDAH) |
+| Status | `status` | Pilihan (bos dimaklumkan bila status bertukar) |
 
-Lajur lain (harga, status, tarikh dan sebagainya) diabaikan. Contoh sheet yang serasi:
+Lajur lain (harga, jenis, tarikh dan sebagainya) diabaikan. Contoh sheet yang serasi:
 
 | kod | nama | brand | jenis | harga | baki | status |
 |---|---|---|---|---|---|---|

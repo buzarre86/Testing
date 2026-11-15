@@ -1,9 +1,11 @@
 /**
  * 🤖 Pemerhati Stok → Telegram bos
  *
- * Skrip ini berjalan di dalam Google Sheet. Setiap kali nilai lajur "Stok"
- * TURUN (sama ada staf ubah dengan tangan, atau program lain ubah melalui API),
- * bos akan terima mesej Telegram. (Lajur stok boleh bernama "Baki" atau "Stok".)
+ * Skrip ini berjalan di dalam Google Sheet. Bos akan terima mesej Telegram bila:
+ *   - nilai lajur stok ("Baki" / "Stok") TURUN, atau
+ *   - nilai lajur "Status" BERTUKAR (cth. Ada → Terjual), atau
+ *   - produk dipadam dari sheet,
+ * sama ada staf ubah dengan tangan, atau program lain ubah melalui API.
  *
  * - Perubahan dengan tangan  → dikesan serta-merta (trigger onEdit)
  * - Perubahan oleh program   → dikesan dalam masa ~5 minit (trigger berjadual)
@@ -20,7 +22,7 @@ var LAJUR_KOD = ['kod', 'sku', 'kod produk'];           // pilihan, tapi disyork
 var LAJUR_NAMA = ['nama', 'nama produk', 'produk'];     // wajib
 var LAJUR_STOK = ['baki', 'stok', 'kuantiti', 'qty'];   // wajib
 var LAJUR_BRAND = ['brand', 'jenama'];                  // pilihan, dipaparkan dalam mesej
-var LAJUR_MIN = ['stok minimum', 'minimum', 'min'];     // pilihan, untuk amaran STOK RENDAH
+var LAJUR_STATUS = ['status'];                          // pilihan: bos dimaklumkan bila status bertukar
 var AWALAN_SNAPSHOT = 'stok:';
 // ===================================================
 
@@ -159,8 +161,7 @@ function semakPerubahan_(pengubah) {
   if (!lock.tryLock(30000)) return; // semakan lain sedang berjalan; ia akan tangkap perubahan ini
   try {
     var items = bacaStok_();
-    var snap = muatSnapshot_();
-    var perubahan = kiraPengurangan(snap.stok, items, snap.nama);
+    var perubahan = kiraPerubahan(muatSnapshot_(), items);
     if (perubahan.length > 0) {
       var mesej = binaMesej(perubahan, pengubah, SpreadsheetApp.getActiveSpreadsheet().getName());
       if (!hantarTelegram_(mesej)) {
@@ -188,44 +189,64 @@ function nombor_(v) {
   return Number(s);
 }
 
+function samaStatus_(a, b) {
+  return kunci_(a) === kunci_(b);
+}
+
 /**
- * Bandingkan snapshot lama dengan stok semasa.
- * @param {Object} sebelum   {kunci: stok}
- * @param {Array}  items     [{kunci, nama, stok, min}]  (stok null = sel kosong/tidak sah)
- * @param {Object} namaLama  {kunci: nama asal}  (pilihan, untuk produk dipadam)
- * @return {Array} senarai pengurangan
+ * Bandingkan snapshot lama dengan data semasa.
+ * @param {Object} lama   {kunci: {s: stok, t: status, n: nama}}  (t undefined = belum direkod)
+ * @param {Array}  items  [{kunci, nama, stok, status}]  (stok null = sel kosong; status null = tiada lajur)
+ * @return {Array} senarai perubahan yang perlu dimaklumkan
  */
-function kiraPengurangan(sebelum, items, namaLama) {
-  namaLama = namaLama || {};
+function kiraPerubahan(lama, items) {
   var hasil = [];
   var ada = {};
   items.forEach(function (it) {
     var k = it.kunci;
     ada[k] = true;
-    if (it.stok === null || !(k in sebelum)) return; // produk baru atau sel kosong: abaikan
-    if (it.stok < sebelum[k]) {
-      hasil.push({ nama: it.nama, sebelum: sebelum[k], selepas: it.stok, min: it.min });
+    var l = lama[k];
+    if (!l) return; // produk baru: abaikan
+    var stokTurun = it.stok !== null && l.s !== null && l.s !== undefined && it.stok < l.s;
+    var statusBerubah = it.status !== null && l.t !== null && l.t !== undefined &&
+      !samaStatus_(it.status, l.t);
+    if (stokTurun || statusBerubah) {
+      hasil.push({
+        nama: it.nama,
+        stokTurun: stokTurun, sebelum: l.s, selepas: it.stok,
+        statusBerubah: statusBerubah, statusLama: l.t, statusBaru: it.status
+      });
     }
   });
-  Object.keys(sebelum).forEach(function (k) {
-    if (!ada[k]) hasil.push({ nama: namaLama[k] || k, sebelum: sebelum[k], selepas: null, min: 0, dipadam: true });
+  Object.keys(lama).forEach(function (k) {
+    if (!ada[k]) hasil.push({ nama: lama[k].n || k, sebelum: lama[k].s, dipadam: true });
   });
   return hasil;
+}
+
+function paparStatus_(s) {
+  return String(s).trim() || '(kosong)';
 }
 
 function binaMesej(perubahan, pengubah, namaSheet) {
   var bahagian = perubahan.map(function (p) {
     if (p.dipadam) {
-      return '🗑️ ' + p.nama + '\nProduk DIPADAM dari sheet (stok terakhir: ' + p.sebelum + ' unit)';
+      return '🗑️ ' + p.nama + '\nProduk DIPADAM dari sheet' +
+        (p.sebelum !== null && p.sebelum !== undefined ? ' (baki terakhir: ' + p.sebelum + ' unit)' : '');
     }
-    var kurang = p.sebelum - p.selepas;
-    var tajuk = p.selepas <= 0 ? '❗ HABIS' : (p.selepas <= p.min ? '⚠️ STOK RENDAH' : '📉 Stok berkurang');
-    var baris = tajuk + ': ' + p.nama +
-      '\nKurang : ' + kurang + ' unit' +
-      '\nStok   : ' + p.sebelum + ' → ' + p.selepas + ' unit';
-    if (p.min) baris += '\nMinimum: ' + p.min + ' unit';
-    if (p.selepas <= 0) baris += '\nSila restock segera.';
-    else if (p.selepas <= p.min) baris += '\nPertimbangkan restock.';
+    var baris;
+    if (p.stokTurun) {
+      baris = (p.selepas <= 0 ? '❗ HABIS' : '📉 Stok berkurang') + ': ' + p.nama +
+        '\nKurang : ' + (p.sebelum - p.selepas) + ' unit' +
+        '\nBaki   : ' + p.sebelum + ' → ' + p.selepas + ' unit';
+    } else {
+      baris = '🔄 Status bertukar: ' + p.nama;
+      if (p.selepas !== null) baris += '\nBaki   : ' + p.selepas + ' unit';
+    }
+    if (p.statusBerubah) {
+      baris += '\nStatus : ' + paparStatus_(p.statusLama) + ' → ' + paparStatus_(p.statusBaru);
+    }
+    if (p.stokTurun && p.selepas <= 0) baris += '\nSila restock segera.';
     return baris;
   });
   var kepala = '📦 ' + namaSheet;
@@ -258,7 +279,7 @@ function bacaStok_() {
   var tajuk = nilai[0].map(kunci_);
   var cK = cariLajur_(tajuk, LAJUR_KOD), cN = cariLajur_(tajuk, LAJUR_NAMA),
       cS = cariLajur_(tajuk, LAJUR_STOK), cB = cariLajur_(tajuk, LAJUR_BRAND),
-      cM = cariLajur_(tajuk, LAJUR_MIN);
+      cT = cariLajur_(tajuk, LAJUR_STATUS);
   if (cN < 0 || cS < 0) {
     throw new Error('Baris pertama mesti ada lajur nama produk (' + LAJUR_NAMA.join('/') +
       ') dan stok (' + LAJUR_STOK.join('/') + '). Tajuk sekarang: ' + nilai[0].join(', '));
@@ -279,33 +300,38 @@ function bacaStok_() {
       kunci: k,
       nama: label,
       stok: nombor_(row[cS]),
-      min: cM >= 0 ? (nombor_(row[cM]) || 0) : 0
+      status: cT >= 0 ? String(row[cT]).trim() : null
     });
   }
   return items;
 }
 
+/** Pulangkan {kunci: {s: stok, t: status, n: nama}} */
 function muatSnapshot_() {
   var semua = PropertiesService.getScriptProperties().getProperties();
-  var snap = { stok: {}, nama: {} };
+  var snap = {};
   Object.keys(semua).forEach(function (k) {
     if (k.indexOf(AWALAN_SNAPSHOT) !== 0) return;
     var kk = k.slice(AWALAN_SNAPSHOT.length);
-    var v = String(semua[k]), i = v.indexOf('|'); // format: "stok|Nama Asal"
-    snap.stok[kk] = Number(i < 0 ? v : v.slice(0, i));
-    snap.nama[kk] = i < 0 ? kk : v.slice(i + 1);
+    var v = String(semua[k]);
+    if (v.charAt(0) === '{') {
+      snap[kk] = JSON.parse(v);
+    } else { // format lama: "stok|Nama"
+      var i = v.indexOf('|');
+      snap[kk] = { s: Number(i < 0 ? v : v.slice(0, i)), n: i < 0 ? kk : v.slice(i + 1) };
+    }
   });
   return snap;
 }
 
 function simpanSnapshot_(items, mulaSemula) {
   var p = PropertiesService.getScriptProperties();
-  var lama = muatSnapshot_().stok;
+  var lama = muatSnapshot_();
   var baru = {};
   items.forEach(function (it) {
-    var k = it.kunci;
-    var stok = it.stok !== null ? it.stok : (!mulaSemula && k in lama ? lama[k] : null); // sel kosong: kekalkan nilai lama
-    if (stok !== null) baru[AWALAN_SNAPSHOT + k] = stok + '|' + it.nama;
+    var l = lama[it.kunci] || {};
+    var stok = it.stok !== null ? it.stok : (!mulaSemula && l.s !== undefined ? l.s : null); // sel kosong: kekalkan nilai lama
+    baru[AWALAN_SNAPSHOT + it.kunci] = JSON.stringify({ s: stok, t: it.status, n: it.nama });
   });
   Object.keys(lama).forEach(function (k) {
     if (!((AWALAN_SNAPSHOT + k) in baru)) p.deleteProperty(AWALAN_SNAPSHOT + k);
